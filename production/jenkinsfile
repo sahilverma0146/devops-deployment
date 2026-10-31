@@ -1,11 +1,12 @@
+
 pipeline {
     agent any
 
     parameters {
         string(
             name: 'DOCKERHUB_REPOSITORY',
-            defaultValue: 'your-dockerhub-username/my-ngrok-app',
-            description: 'Docker Hub repository, for example username/my-ngrok-app'
+            defaultValue: 'sahilv146/my-ngrok-app',
+            description: 'Docker Hub repository name'
         )
     }
 
@@ -14,25 +15,35 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Build and push image') {
+        stage('Build and Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: env.DOCKERHUB_CREDENTIALS_ID,
-                    usernameVariable: 'DOCKERHUB_USERNAME',
-                    passwordVariable: 'DOCKERHUB_TOKEN'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: env.DOCKERHUB_CREDENTIALS_ID,
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
                     sh '''
                         set -eu
+
                         trap 'docker logout >/dev/null 2>&1 || true' EXIT
 
+                        echo "Logging into Docker Hub..."
+
                         printf '%s' "$DOCKERHUB_TOKEN" |
-                            docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+                            docker login \
+                            --username "$DOCKERHUB_USERNAME" \
+                            --password-stdin
+
+                        echo "Building Docker image..."
 
                         docker build \
                             --file production/Dockerfile \
@@ -41,8 +52,15 @@ pipeline {
                             --tag "$DOCKERHUB_REPOSITORY:latest" \
                             .
 
+                        echo "Pushing versioned image..."
+
                         docker push "$DOCKERHUB_REPOSITORY:$BUILD_NUMBER"
+
+                        echo "Pushing latest image..."
+
                         docker push "$DOCKERHUB_REPOSITORY:latest"
+
+                        echo "Docker image pushed successfully!"
                     '''
                 }
             }
